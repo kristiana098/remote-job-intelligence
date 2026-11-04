@@ -1,6 +1,14 @@
+import os
 import re
+from dotenv import load_dotenv
 import pandas as pd
 import requests
+
+# 1. Load secret variables from the hidden .env file once
+load_dotenv()
+
+app_id = os.getenv("ADZUNA_APP_ID")
+app_key = os.getenv("ADZUNA_APP_KEY")
 
 # Define key tech skills we want to extract from job titles & descriptions
 TECH_SKILLS = [
@@ -40,15 +48,55 @@ def extract_skills(text):
 
     found_skills = []
     for skill in TECH_SKILLS:
-        # Match whole words to avoid partial matching (e.g. matching "R" inside "Remote")
         pattern = r"\b" + re.escape(skill) + r"\b"
         if re.search(pattern, text, re.IGNORECASE):
-            # Normalize variations like PowerBI to Power BI
             clean_skill = "Power BI" if skill.lower() == "powerbi" else skill
             if clean_skill not in found_skills:
                 found_skills.append(clean_skill)
 
     return ", ".join(found_skills)
+
+
+def fetch_adzuna_jobs():
+    print(" Fetching & processing Adzuna API...")
+    if not app_id or not app_key:
+        print(" ⚠️ Adzuna skipped: Missing APP_ID or APP_KEY in your .env file.")
+        return []
+
+    url = "https://api.adzuna.com/v1/api/jobs/gb/search/1"
+    params = {
+        "app_id": app_id,
+        "app_key": app_key,
+        "what": "data science",
+        "results_per_page": 20,
+        "content-type": "application/json",
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            jobs = response.json().get("results", [])
+            results = []
+            for j in jobs:
+                title = j.get("title", "")
+                description = j.get("description", "")
+                full_text = f"{title} {description}"
+
+                results.append({
+                    "Source": "Adzuna",
+                    "Title": title,
+                    "Company": j.get("company", {}).get("display_name", "Unknown"),
+                    "Location": j.get("location", {}).get("display_name", "UK"),
+                    "Skills Extracted": extract_skills(full_text),
+                    "Published Date": str(j.get("created", ""))[:10],
+                    "Apply Link": j.get("redirect_url"),
+                })
+            return results
+        else:
+            print(f" Adzuna API Error: {response.status_code}")
+    except Exception as e:
+        print(f" Adzuna error: {e}")
+    return []
 
 
 def fetch_remotive_jobs():
@@ -77,16 +125,17 @@ def fetch_remotive_jobs():
                 })
             return results
     except Exception as e:
-        print(f"   Remotive error: {e}")
+        print(f" Remotive error: {e}")
     return []
 
 
 def fetch_jobicy_jobs():
     print(" Fetching & processing Jobicy API...")
-    url = "https://jobicy.com/api/v1/jobs"
+    # Updated to v2 endpoint
+    url = "https://jobicy.com/api/v2/remote-jobs"
     try:
         res = requests.get(url, timeout=10)
-        if res.status_code == 200:
+        if res.status_code == 200 and "application/json" in res.headers.get("Content-Type", ""):
             jobs = res.json().get("jobs", [])
             results = []
             for j in jobs:
@@ -104,8 +153,10 @@ def fetch_jobicy_jobs():
                     "Apply Link": j.get("url"),
                 })
             return results
+        else:
+            print(f" Jobicy error: Received non-JSON response (Status: {res.status_code})")
     except Exception as e:
-        print(f"   Jobicy error: {e}")
+        print(f" Jobicy error: {e}")
     return []
 
 
@@ -137,12 +188,13 @@ def fetch_arbeitnow_jobs():
                 })
             return results
     except Exception as e:
-        print(f"   Arbeitnow error: {e}")
+        print(f" Arbeitnow error: {e}")
     return []
 
 
 def run_pipeline():
     all_jobs = []
+    all_jobs.extend(fetch_adzuna_jobs())
     all_jobs.extend(fetch_remotive_jobs())
     all_jobs.extend(fetch_jobicy_jobs())
     all_jobs.extend(fetch_arbeitnow_jobs())
@@ -154,10 +206,22 @@ def run_pipeline():
     df = pd.DataFrame(all_jobs)
 
     # Filter for data, analytics, python, SQL, operations, or BI roles
-    pattern = "data|analyst|analytics|python|sql|bi|operations"
+    pattern = (
+        "data scientist|machine learning|ml engineer|ai engineer|nlp|"
+        "llm|mlops|quantitative|data science|data analyst|bi analyst|"
+        "business intelligence|analytics engineer"
+    )
     filtered_df = df[
         df["Title"].str.contains(pattern, case=False, na=False)
     ].copy()
+
+    # Ensure Published Date is formatted cleanly (YYYY-MM-DD)
+    filtered_df["Published Date"] = pd.to_datetime(
+        filtered_df["Published Date"], errors="coerce"
+    ).dt.strftime("%Y-%m-%d")
+    filtered_df["Published Date"] = filtered_df["Published Date"].fillna(
+        "Recent"
+    )
 
     # Drop duplicates
     filtered_df = filtered_df.drop_duplicates(subset=["Title", "Company"])
