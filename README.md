@@ -3,7 +3,7 @@
 An end-to-end automated data engineering pipeline and interactive web application that aggregates, cleans, and analyzes remote data science and analytics job postings from multiple global APIs.
 
 ## 📊 Live App
-Explore the live dashboard here: [Streamlit Cloud App URL] *(Replace with your link)*
+Explore the live dashboard here: [Streamlit Cloud App URL] https://remote-job-intelligence-qeovtgdt5cs8ictt7pijjv.streamlit.app/
 
 ---
 
@@ -34,4 +34,4 @@ remote-job-intelligence/
 ├── job_fetcher.py            # Multi-source API scraper & data processor
 ├── cleaned_remote_jobs.csv   # Automatically updated job dataset
 ├── requirements.txt          # Project dependencies
-└── README.md                 # Project documentation
+└── README.md                 # Project documentationgit 
