@@ -1,266 +1,58 @@
 import os
-import re
-from dotenv import load_dotenv
 import pandas as pd
-import requests
+import streamlit as st
 
-# 1. Load secret variables from the hidden .env file once
-load_dotenv()
+st.set_page_config(page_title="Job Pipeline Dashboard", page_icon="📊", layout="wide")
 
-app_id = os.getenv("ADZUNA_APP_ID")
-app_key = os.getenv("ADZUNA_APP_KEY")
+st.title("📊 Data & Analytics Job Aggregator")
+st.write("Explore live filtered job postings fetched from your automated pipeline.")
 
-# Define key tech skills we want to extract from job titles & descriptions
-TECH_SKILLS = [
-    "Python",
-    "SQL",
-    "Pandas",
-    "NumPy",
-    "R",
-    "Power BI",
-    "PowerBI",
-    "Tableau",
-    "Docker",
-    "AWS",
-    "Azure",
-    "GCP",
-    "Spark",
-    "Airflow",
-    "Git",
-    "Excel",
-    "Machine Learning",
-    "NLP",
-    "MLOps",
-    "ETL",
-    "Scikit-Learn",
-    "PyTorch",
-    "TensorFlow",
-    "FastAPI",
-    "Streamlit",
-    "Dash",
-]
-
-
-def extract_skills(text):
-    """Scans text and returns a comma-separated string of matched tech skills."""
-    if not isinstance(text, str):
-        return ""
-
-    found_skills = []
-    for skill in TECH_SKILLS:
-        pattern = r"\b" + re.escape(skill) + r"\b"
-        if re.search(pattern, text, re.IGNORECASE):
-            clean_skill = "Power BI" if skill.lower() == "powerbi" else skill
-            if clean_skill not in found_skills:
-                found_skills.append(clean_skill)
-
-    return ", ".join(found_skills)
-
-
-def fetch_adzuna_jobs():
-    print("Fetching & processing Adzuna API...")
-    if not app_id or not app_key:
-        print("⚠️ Adzuna skipped: Missing APP_ID or APP_KEY in your .env file.")
-        return []
-
-    url = "https://api.adzuna.com/v1/api/jobs/gb/search/1"
-    params = {
-        "app_id": app_id,
-        "app_key": app_key,
-        "what": "data science",
-        "results_per_page": 20,
-        "content-type": "application/json",
-    }
-
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            jobs = data.get("results", [])
-            results = []
-            for j in jobs:
-                title = j.get("title", "")
-                description = j.get("description", "")
-                full_text = f"{title} {description}"
-
-                results.append({
-                    "Source": "Adzuna",
-                    "Title": title,
-                    "Company": j.get("company", {}).get("display_name", "Unknown"),
-                    "Location": j.get("location", {}).get("display_name", "UK"),
-                    "Skills Extracted": extract_skills(full_text),
-                    "Published Date": str(j.get("created", ""))[:10],
-                    "Apply Link": j.get("redirect_url"),
-                })
-            return results
-        else:
-            print(f"⚠️ Adzuna API returned non-200 status: {response.status_code}")
-    except requests.exceptions.Timeout:
-        print("⚠️ Adzuna error: Request timed out.")
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Adzuna network error: {e}")
-    except Exception as e:
-        print(f"⚠️ Adzuna unexpected error: {e}")
-    return []
-
-
-def fetch_remotive_jobs():
-    print("Fetching & processing Remotive API...")
-    url = "https://remotive.com/api/remote-jobs?category=data"
-    
-    try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            jobs = data.get("jobs", [])
-            results = []
-            for j in jobs:
-                title = j.get("title", "")
-                description = j.get("description", "")
-                full_text = f"{title} {description}"
-
-                results.append({
-                    "Source": "Remotive",
-                    "Title": title,
-                    "Company": j.get("company_name", "Unknown"),
-                    "Location": j.get("candidate_required_location", "Worldwide"),
-                    "Skills Extracted": extract_skills(full_text),
-                    "Published Date": str(j.get("publication_date", ""))[:10],
-                    "Apply Link": j.get("url"),
-                })
-            return results
-        else:
-            print(f"⚠️ Remotive API returned non-200 status: {res.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Remotive network error: {e}")
-    except Exception as e:
-        print(f"⚠️ Remotive unexpected error: {e}")
-    return []
-
-
-def fetch_jobicy_jobs():
-    print("Fetching & processing Jobicy API...")
-    url = "https://jobicy.com/api/v2/remote-jobs"
-    
-    try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200 and "application/json" in res.headers.get("Content-Type", ""):
-            data = res.json()
-            jobs = data.get("jobs", [])
-            results = []
-            for j in jobs:
-                title = j.get("jobTitle", "")
-                description = j.get("jobDescription", "")
-                full_text = f"{title} {description}"
-
-                results.append({
-                    "Source": "Jobicy",
-                    "Title": title,
-                    "Company": j.get("companyName", "Unknown"),
-                    "Location": j.get("jobGeo", "Remote"),
-                    "Skills Extracted": extract_skills(full_text),
-                    "Published Date": str(j.get("pubDate", ""))[:10],
-                    "Apply Link": j.get("url"),
-                })
-            return results
-        else:
-            print(f"⚠️ Jobicy error: Received non-JSON response or status {res.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Jobicy network error: {e}")
-    except Exception as e:
-        print(f"⚠️ Jobicy unexpected error: {e}")
-    return []
-
-
-def fetch_arbeitnow_jobs():
-    print("Fetching & processing Arbeitnow API (Europe/Remote)...")
-    url = "https://www.arbeitnow.com/api/job-board-api"
-    
-    try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            jobs = data.get("data", [])
-            results = []
-            for j in jobs:
-                title = j.get("title", "")
-                description = j.get("description", "")
-                full_text = f"{title} {description}"
-
-                loc = "Remote / Europe" if j.get("remote") else j.get("location")
-
-                results.append({
-                    "Source": "Arbeitnow",
-                    "Title": title,
-                    "Company": j.get("company_name", "Unknown"),
-                    "Location": loc,
-                    "Skills Extracted": extract_skills(full_text),
-                    "Published Date": "",
-                    "Apply Link": j.get("url"),
-                })
-            return results
-        else:
-            print(f"⚠️ Arbeitnow API returned non-200 status: {res.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Arbeitnow network error: {e}")
-    except Exception as e:
-        print(f"⚠️ Arbeitnow unexpected error: {e}")
-    return []
-
-
-def run_pipeline():
-    all_jobs = []
-    
-    # Each function safely catches its own errors and returns [] if it fails
-    all_jobs.extend(fetch_adzuna_jobs())
-    all_jobs.extend(fetch_remotive_jobs())
-    all_jobs.extend(fetch_jobicy_jobs())
-    all_jobs.extend(fetch_arbeitnow_jobs())
-
-    if not all_jobs:
-        print("❌ No jobs fetched from any source.")
-        return
-
-    df = pd.DataFrame(all_jobs)
-
-    # Filter for data, analytics, python, SQL, operations, or BI roles
-    pattern = (
-        "data scientist|machine learning|ml engineer|ai engineer|nlp|"
-        "llm|mlops|quantitative|data science|data analyst|bi analyst|"
-        "business intelligence|analytics engineer"
-    )
-    filtered_df = df[
-        df["Title"].str.contains(pattern, case=False, na=False)
-    ].copy()
-
-    # Ensure Published Date is formatted cleanly (YYYY-MM-DD)
-    filtered_df["Published Date"] = pd.to_datetime(
-        filtered_df["Published Date"], errors="coerce"
-    ).dt.strftime("%Y-%m-%d")
-    filtered_df["Published Date"] = filtered_df["Published Date"].fillna(
-        "Recent"
-    )
-
-    # Drop duplicates
-    filtered_df = filtered_df.drop_duplicates(subset=["Title", "Company"])
-
-    # Clean missing skills
-    filtered_df["Skills Extracted"] = filtered_df["Skills Extracted"].replace(
-        "", "General Analytics / Unspecified"
-    )
-
-    # Save output
+@st.cache_data
+def load_data():
     filename = "cleaned_remote_jobs.csv"
-    filtered_df.to_csv(filename, index=False)
+    if not os.path.exists(filename):
+        return None
+    try:
+        return pd.read_csv(filename)
+    except Exception as e:
+        st.error(f"Error reading data file: {e}")
+        return None
 
-    print("\n" + "=" * 60)
-    print("✅ PIPELINE COMPLETE!")
-    print(
-        f"Total jobs analyzed: {len(df)} | Matching Data/Ops jobs: {len(filtered_df)}"
-    )
-    print(f"Saved enhanced dataset to '{filename}'")
-    print("=" * 60)
+df = load_data()
 
+if df is None or df.empty:
+    st.warning("⚠️ No job data found (`cleaned_remote_jobs.csv` is missing or empty). Run `python job_fetcher.py` first!")
+else:
+    st.sidebar.header("Filter Jobs")
+    sources = ["All"] + list(df["Source"].dropna().unique())
+    selected_source = st.sidebar.selectbox("Source Platform", sources)
+    search_query = st.sidebar.text_input("Search Title or Skills", "")
 
-if __name__ == "__main__":
-    run_pipeline()
+    filtered_df = df.copy()
+    if selected_source != "All":
+        filtered_df = filtered_df[filtered_df["Source"] == selected_source]
+
+    if search_query:
+        filtered_df = filtered_df[
+            filtered_df["Title"].str.contains(search_query, case=False, na=False)
+            | filtered_df["Skills Extracted"].str.contains(search_query, case=False, na=False)
+        ]
+
+    col1, col2 = st.columns(2)
+    col1.metric("Total Jobs Displayed", len(filtered_df))
+    col2.metric("Unique Companies", filtered_df["Company"].nunique() if not filtered_df.empty else 0)
+
+    st.markdown("---")
+
+    if filtered_df.empty:
+        st.info("ℹ️ No jobs match your current filter criteria.")
+    else:
+        for index, row in filtered_df.iterrows():
+            with st.container():
+                st.subheader(row.get("Title", "Untitled Role"))
+                st.write(f"**Company:** {row.get('Company', 'Unknown')} | **Location:** {row.get('Location', 'Remote')} | **Source:** {row.get('Source', 'Unknown')}")
+                st.write(f"🛠️ **Skills:** `{row.get('Skills Extracted', 'None')}`")
+                apply_link = row.get("Apply Link")
+                if apply_link and pd.notna(apply_link):
+                    st.markdown(f"[Apply Here]({apply_link})", unsafe_allow_html=True)
+                st.markdown("---")
