@@ -3,11 +3,13 @@ name: Daily Job Aggregator Update
 on:
   schedule:
     - cron: '0 8 * * *' # Runs every day at 8:00 AM UTC
-  workflow_dispatch: # Allows you to trigger it manually anytime from GitHub!
+  workflow_dispatch: # Allows manual trigger anytime from GitHub!
 
 jobs:
   run-fetcher:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required so GitHub Actions can push updates back to your repo!
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,15 +31,10 @@ jobs:
         run: |
           python job_fetcher.py
 
-      - name: Commit and push updated CSV to Hugging Face
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Commit and push updated CSV to GitHub
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.io"
-          
-          # Push directly to your Hugging Face Space repository
-          git remote add hf https://oauth2:$HF_TOKEN@huggingface.co/spaces/KristjanaPrifti/Remote-job-aggregator
           git add cleaned_remote_jobs.csv
           git commit -m "Auto-update daily job postings dataset [skip ci]" || echo "No changes to commit"
-          git push hf main --force
+          git push
