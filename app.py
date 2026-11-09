@@ -18,7 +18,8 @@ def load_data():
   if not os.path.exists(filename):
     return None
   try:
-    return pd.read_csv(filename)
+    # on_bad_lines='skip' ignores any broken rows instead of crashing the app
+    return pd.read_csv(filename, on_bad_lines="skip")
   except Exception as e:
     st.error(f"Error reading data file: {e}")
     return None
